@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Code Keeper Dashboard</title>
+    <title>Code Keeper Cloud</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
     <style>
         :root {
             --bg-color: #000000;
@@ -58,23 +61,10 @@
             position: relative;
         }
 
-        #cards-container {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
+        #cards-container { display: flex; flex-direction: column; gap: 20px; }
 
-        .status-msg {
-            text-align: center;
-            transition: opacity 0.4s ease;
-            display: none;
-        }
-
-        .status-msg.visible {
-            display: block;
-            opacity: 1;
-        }
-
+        .status-msg { text-align: center; transition: opacity 0.4s ease; display: none; }
+        .status-msg.visible { display: block; opacity: 1; }
         #empty-msg { margin: auto 0; padding: 50px 0; }
         #end-msg { padding: 40px 0; color: rgba(255, 255, 255, 0.2); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; }
 
@@ -85,42 +75,14 @@
             border: 1px solid var(--accent-color);
             position: relative;
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            animation: cardEnter 0.5s cubic-bezier(0.23, 1, 0.32, 1) forwards;
-            /* Плавное перетекание прозрачности */
-            transition: 
-                opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1),
-                max-height 0.6s cubic-bezier(0.4, 0, 0.2, 1),
-                margin 0.6s ease,
-                padding 0.6s ease,
-                transform 0.8s ease;
+            transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.6s ease, transform 0.8s ease, margin 0.6s ease;
             opacity: 1;
             max-height: 2000px;
             overflow: hidden;
         }
 
-        @keyframes cardEnter {
-            from { opacity: 0; transform: translateY(15px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* СОСТОЯНИЕ ALPHA 0% */
-        .note-card.fade-out {
-            opacity: 0;
-            transform: translateY(-10px);
-            pointer-events: none;
-        }
-
-        /* СОСТОЯНИЕ СХЛОПЫВАНИЯ МЕСТА */
-        .note-card.collapse {
-            max-height: 0;
-            margin-top: -10px;
-            margin-bottom: -10px;
-            padding-top: 0;
-            padding-bottom: 0;
-            border-width: 0;
-            opacity: 0;
-        }
-
+        .note-card.fade-out { opacity: 0; transform: translateY(-10px); pointer-events: none; }
+        .note-card.collapse { max-height: 0; margin-top: -10px; margin-bottom: -10px; padding: 0; border-width: 0; }
         .note-card.hidden-filter { display: none; }
 
         .side-panel { width: 280px; display: flex; flex-direction: column; gap: 25px; }
@@ -184,13 +146,8 @@
 <body>
 
     <div id="code-display">
-        <div id="empty-msg" class="status-msg visible">
-            <p>Здесь пока ничего нет</p>
-            <span style="font-size: 12px; margin-top: 5px; color: var(--text-dim);">Добавьте первую заметку или задание</span>
-        </div>
-        
+        <div id="empty-msg" class="status-msg visible">Загрузка данных...</div>
         <div id="cards-container"></div>
-
         <div id="end-msg" class="status-msg">Конец списка</div>
     </div>
 
@@ -217,7 +174,7 @@
             <textarea id="nCode" rows="6" placeholder="Код Python"></textarea>
             <div class="switch-group"><label class="switch"><input type="checkbox" onchange="toggleField('nExpBox')"><span class="slider"></span></label><span>Пояснение</span></div>
             <textarea id="nExpBox" class="hidden" rows="3"></textarea>
-            <button class="submit-btn" onclick="addNote()">Сохранить</button>
+            <button class="submit-btn" onclick="saveToCloud('note')">Сохранить в облако</button>
         </div>
     </div>
 
@@ -229,12 +186,45 @@
             <textarea id="tSol" rows="5" placeholder="Решение"></textarea>
             <div class="switch-group"><label class="switch"><input type="checkbox" onchange="toggleField('tExpBox')"><span class="slider"></span></label><span>Разбор</span></div>
             <textarea id="tExpBox" class="hidden" rows="3"></textarea>
-            <button class="submit-btn" onclick="addTask()">Добавить</button>
+            <button class="submit-btn" onclick="saveToCloud('task')">Добавить в облако</button>
         </div>
     </div>
 
     <script>
+        // КОНФИГУРАЦИЯ FIREBASE (ЗАМЕНИ НА СВОЮ!)
+        const firebaseConfig = {
+            apiKey: "AIzaSyAmyXZow1n8HSf6twcD_NvV4GUrBU3Y7bov",
+            authDomain: "inf-code.firebaseapp.com",
+            databaseURL: "https://inf-code-default-rtdb.firebaseio.com",
+            projectId: "inf-code",
+            storageBucket: "inf-code.firebasestorage.app",
+            messagingSenderId: "380650884134",
+            appId: "1:380650884134:web:efd446360a4d8b2b5beae7"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database().ref('materials');
+
         let currentFilter = 'all';
+
+        // ИНИЦИАЛИЗАЦИЯ: Слушаем базу данных в реальном времени
+        db.on('value', (snapshot) => {
+            const container = document.getElementById('cards-container');
+            container.innerHTML = '';
+            const data = snapshot.val();
+            
+            if (!data) {
+                updateStatusMsgs(0);
+                return;
+            }
+
+            // Рендерим все карточки из базы (в обратном порядке, новые сверху)
+            Object.keys(data).reverse().forEach(id => {
+                const item = data[id];
+                renderCard(id, item.type, item.num, item.text, item.code, item.exp);
+            });
+            updateStatusMsgs(Object.keys(data).length);
+        });
 
         function openM(id) { document.getElementById(id).style.display = 'flex'; }
         function closeM() { 
@@ -256,11 +246,34 @@
                 .replace(/==(.*?)==/g, '<span class="marked">$1</span>');
         }
 
-        function createCard(type, num, text, code, exp) {
+        // ОТПРАВКА В FIREBASE
+        function saveToCloud(type) {
+            const data = type === 'note' ? {
+                type: 'note',
+                num: document.getElementById('nNum').value || '?',
+                code: document.getElementById('nCode').value,
+                exp: document.getElementById('nExpBox').value,
+                timestamp: Date.now()
+            } : {
+                type: 'task',
+                num: document.getElementById('tNum').value || '?',
+                text: document.getElementById('tText').value,
+                code: document.getElementById('tSol').value,
+                exp: document.getElementById('tExpBox').value,
+                timestamp: Date.now()
+            };
+
+            db.push(data); // Отправляем
+            closeM();
+        }
+
+        // ВИЗУАЛЬНЫЙ РЕНДЕР
+        function renderCard(id, type, num, text, code, exp) {
             const card = document.createElement('div');
             card.className = `note-card data-type-${type}`;
+            card.dataset.id = id;
             card.innerHTML = `
-                <button class="delete-btn" onclick="deleteCard(this)">×</button>
+                <button class="delete-btn" onclick="deleteFromCloud('${id}', this)">×</button>
                 <div class="note-header"><span>ЗАДАНИЕ №${num}</span><span class="type-tag">${type === 'note' ? 'Заметка' : 'Задание'}</span></div>
                 ${text ? `<div class="task-text">${text}</div>` : ''}
                 <div class="code-block ${type === 'task' ? 'hidden' : ''}">${codeHighlight(code)}</div>
@@ -271,45 +284,28 @@
                 </div>
                 <div class="explanation-box">${exp}</div>
             `;
-            document.getElementById('cards-container').prepend(card);
-            updateStatusMsgs();
+            document.getElementById('cards-container').appendChild(card);
+            applyCurrentFilter(card);
         }
 
-        async function deleteCard(btn) {
+        async function deleteFromCloud(id, btn) {
             const card = btn.closest('.note-card');
-            
-            // Фиксируем текущую высоту для плавного схлопывания в будущем
             card.style.maxHeight = card.offsetHeight + 'px';
-            
-            // 1. Плавно в Alpha 0%
             card.classList.add('fade-out');
             
-            // Ждем завершения прозрачности (800мс как в CSS)
             await new Promise(r => setTimeout(r, 400));
-            
-            // 2. Плавно схлопываем пространство
             card.classList.add('collapse');
             
-            // Ждем завершения схлопывания и удаляем из DOM
             await new Promise(r => setTimeout(r, 600));
-            
-            card.remove();
-            updateStatusMsgs();
+            db.child(id).remove(); // Удаляем из Firebase
         }
 
-        function updateStatusMsgs() {
-            const cards = document.querySelectorAll('.note-card:not(.fade-out)');
+        function updateStatusMsgs(count) {
             const emptyMsg = document.getElementById('empty-msg');
             const endMsg = document.getElementById('end-msg');
             
-            let visibleCount = 0;
-            cards.forEach(card => {
-                const isVisible = (currentFilter === 'all') || card.classList.contains(`data-type-${currentFilter}`);
-                if (isVisible) { card.classList.remove('hidden-filter'); visibleCount++; }
-                else { card.classList.add('hidden-filter'); }
-            });
-
-            if (visibleCount === 0) {
+            if (count === 0) {
+                emptyMsg.innerText = "Здесь пока ничего нет";
                 emptyMsg.classList.add('visible');
                 endMsg.classList.remove('visible');
             } else {
@@ -318,14 +314,23 @@
             }
         }
 
-        function addNote() {
-            createCard('note', document.getElementById('nNum').value || '?', null, document.getElementById('nCode').value, document.getElementById('nExpBox').value);
-            closeM();
+        function applyCurrentFilter(card) {
+            const type = card.classList.contains('data-type-note') ? 'note' : 'task';
+            if (currentFilter !== 'all' && type !== currentFilter) {
+                card.classList.add('hidden-filter');
+            }
         }
 
-        function addTask() {
-            createCard('task', document.getElementById('tNum').value || '?', document.getElementById('tText').value, document.getElementById('tSol').value, document.getElementById('tExpBox').value);
-            closeM();
+        function setFilter(btn, type) {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentFilter = type;
+            
+            document.querySelectorAll('.note-card').forEach(card => {
+                const cardType = card.classList.contains('data-type-note') ? 'note' : 'task';
+                if (type === 'all' || cardType === type) card.classList.remove('hidden-filter');
+                else card.classList.add('hidden-filter');
+            });
         }
 
         function revealSol(btn) {
@@ -334,7 +339,6 @@
             card.querySelector('#copyBtn')?.classList.remove('hidden');
             card.querySelector('#infoBtn')?.classList.remove('hidden');
             btn.style.display = 'none';
-            card.querySelectorAll('.marked').forEach(m => m.classList.add('visible'));
         }
 
         function toggleE(btn) {
@@ -345,13 +349,6 @@
         function copyC(btn) {
             navigator.clipboard.writeText(btn.closest('.note-card').querySelector('.code-block').innerText);
             const old = btn.innerText; btn.innerText = 'OK'; setTimeout(() => btn.innerText = old, 1000);
-        }
-
-        function setFilter(btn, type) {
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            currentFilter = type;
-            updateStatusMsgs();
         }
     </script>
 </body>

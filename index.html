@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Keeper Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #000000;
+            --blueprint-bg: #111111;
+            --grid-line: rgba(255, 255, 255, 0.04);
+            --grid-line-sub: rgba(255, 255, 255, 0.015);
+            --grid-size-main: 150px;
+            --grid-size-sub: 30px;
+            --card-bg: rgba(22, 22, 22, 0.98);
+            --accent-color: #333333;
+            --text-main: #ffffff;
+            --text-dim: #a0a0a0;
+            --toggle-on: #50fa7b;
+            --delete-color: #ff5555;
+            --py-kw: #ff79c6;
+            --py-fn: #8be9fd;
+            --py-str: #f1fa8c;
+            --py-num: #bd93f9;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            padding: 30px;
+            gap: 30px;
+            overflow: hidden;
+        }
+
+        #code-display {
+            flex: 1;
+            height: 100%;
+            background-color: var(--blueprint-bg);
+            background-image: 
+                linear-gradient(var(--grid-line) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+                linear-gradient(var(--grid-line-sub) 1px, transparent 1px),
+                linear-gradient(90deg, var(--grid-line-sub) 1px, transparent 1px);
+            background-size: var(--grid-size-main) var(--grid-size-main), 
+                            var(--grid-size-main) var(--grid-size-main), 
+                            var(--grid-size-sub) var(--grid-size-sub), 
+                            var(--grid-size-sub) var(--grid-size-sub);
+            border-radius: 24px;
+            padding: 25px;
+            overflow-y: auto;
+            border: 1px solid var(--accent-color);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        #cards-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .status-msg {
+            text-align: center;
+            transition: opacity 0.4s ease;
+            display: none;
+        }
+
+        .status-msg.visible {
+            display: block;
+            opacity: 1;
+        }
+
+        #empty-msg { margin: auto 0; padding: 50px 0; }
+        #end-msg { padding: 40px 0; color: rgba(255, 255, 255, 0.2); font-size: 11px; text-transform: uppercase; letter-spacing: 2px; }
+
+        .note-card {
+            background: var(--card-bg);
+            border-radius: 18px;
+            padding: 20px;
+            border: 1px solid var(--accent-color);
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            animation: cardEnter 0.5s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+            /* Плавное перетекание прозрачности */
+            transition: 
+                opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1),
+                max-height 0.6s cubic-bezier(0.4, 0, 0.2, 1),
+                margin 0.6s ease,
+                padding 0.6s ease,
+                transform 0.8s ease;
+            opacity: 1;
+            max-height: 2000px;
+            overflow: hidden;
+        }
+
+        @keyframes cardEnter {
+            from { opacity: 0; transform: translateY(15px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* СОСТОЯНИЕ ALPHA 0% */
+        .note-card.fade-out {
+            opacity: 0;
+            transform: translateY(-10px);
+            pointer-events: none;
+        }
+
+        /* СОСТОЯНИЕ СХЛОПЫВАНИЯ МЕСТА */
+        .note-card.collapse {
+            max-height: 0;
+            margin-top: -10px;
+            margin-bottom: -10px;
+            padding-top: 0;
+            padding-bottom: 0;
+            border-width: 0;
+            opacity: 0;
+        }
+
+        .note-card.hidden-filter { display: none; }
+
+        .side-panel { width: 280px; display: flex; flex-direction: column; gap: 25px; }
+        .panel-section { display: flex; flex-direction: column; gap: 10px; }
+        .section-title { font-size: 11px; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1.5px; margin-left: 5px; }
+
+        .action-btn {
+            width: 100%; padding: 16px; background: #1a1a1a; border: 1px solid var(--accent-color);
+            border-radius: 14px; color: white; cursor: pointer; font-weight: 600; font-size: 14px;
+            display: flex; align-items: center; justify-content: space-between; transition: 0.3s;
+        }
+        .action-btn:hover { background: #252525; transform: translateY(-2px); }
+
+        .filter-group { display: flex; flex-direction: column; gap: 8px; background: #0a0a0a; padding: 10px; border-radius: 16px; border: 1px solid var(--accent-color); }
+        .filter-btn { background: transparent; border: none; color: var(--text-dim); padding: 10px 15px; border-radius: 10px; cursor: pointer; text-align: left; font-size: 13px; transition: 0.2s; }
+        .filter-btn.active { background: white; color: black; font-weight: bold; }
+
+        .note-header { font-size: 12px; color: var(--text-dim); margin-bottom: 12px; font-weight: 700; text-transform: uppercase; display: flex; align-items: center; gap: 10px; }
+        .type-tag { font-size: 10px; padding: 2px 8px; border-radius: 20px; border: 1px solid #444; }
+
+        .delete-btn {
+            position: absolute; top: 15px; right: 15px; background: transparent; border: 1px solid var(--accent-color);
+            color: var(--text-dim); width: 28px; height: 28px; border-radius: 8px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; transition: 0.2s;
+        }
+        .delete-btn:hover { background: var(--delete-color); color: white; border-color: var(--delete-color); }
+
+        .task-text { font-size: 14px; line-height: 1.6; margin-bottom: 15px; color: #ddd; }
+        .code-block { font-family: 'Fira Code', monospace; font-size: 13px; background: #0a0a0a; padding: 15px; border-radius: 12px; white-space: pre-wrap; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 15px; }
+
+        .kw { color: var(--py-kw); } .fn { color: var(--py-fn); } .str { color: var(--py-str); } .num { color: var(--py-num); }
+        .marked { background: rgba(255,255,255,0.1); border-radius: 3px; opacity: 0; transition: 0.5s; }
+        .marked.visible { opacity: 1; }
+
+        .btn-small { background: #2a2a2a; border: 1px solid var(--accent-color); color: #ccc; padding: 6px 14px; border-radius: 8px; font-size: 12px; cursor: pointer; }
+        .explanation-box { margin-top: 15px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 8px; font-size: 13px; color: #888; border-left: 2px solid #444; display: none; }
+
+        .modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(8px);
+            justify-content: center; align-items: center; z-index: 1000;
+        }
+        .modal-content {
+            background: linear-gradient(145deg, #1e1e1e, #141414); padding: 35px; border-radius: 28px; width: 520px;
+            border: 1px solid rgba(255, 255, 255, 0.1); animation: modalScale 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        @keyframes modalScale { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        
+        input, textarea { width: 100%; background: #080808; border: 1px solid #2a2a2a; color: white; padding: 14px; border-radius: 12px; outline: none; margin-bottom: 15px; }
+        .switch-group { display: flex; align-items: center; gap: 12px; margin: 10px 0 20px 0; background: rgba(255,255,255,0.03); padding: 12px; border-radius: 12px; }
+        .switch { position: relative; display: inline-block; width: 38px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #333; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--toggle-on); }
+        input:checked + .slider:before { transform: translateX(18px); }
+        .submit-btn { background: #ffffff; color: #000; border: none; padding: 16px; border-radius: 14px; cursor: pointer; font-weight: 700; width: 100%; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="code-display">
+        <div id="empty-msg" class="status-msg visible">
+            <p>Здесь пока ничего нет</p>
+            <span style="font-size: 12px; margin-top: 5px; color: var(--text-dim);">Добавьте первую заметку или задание</span>
+        </div>
+        
+        <div id="cards-container"></div>
+
+        <div id="end-msg" class="status-msg">Конец списка</div>
+    </div>
+
+    <div class="side-panel">
+        <div class="panel-section">
+            <div class="section-title">Создание</div>
+            <button class="action-btn" onclick="openM('noteModal')">Новая заметка <span>+</span></button>
+            <button class="action-btn" onclick="openM('taskModal')">Новое задание <span>?</span></button>
+        </div>
+        <div class="panel-section">
+            <div class="section-title">Фильтрация</div>
+            <div class="filter-group">
+                <button class="filter-btn active" onclick="setFilter(this, 'all')">Все материалы</button>
+                <button class="filter-btn" onclick="setFilter(this, 'note')">Только заметки</button>
+                <button class="filter-btn" onclick="setFilter(this, 'task')">Только задания</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="noteModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom:20px">Создание заметки</h3>
+            <input type="text" id="nNum" placeholder="Номер задания">
+            <textarea id="nCode" rows="6" placeholder="Код Python"></textarea>
+            <div class="switch-group"><label class="switch"><input type="checkbox" onchange="toggleField('nExpBox')"><span class="slider"></span></label><span>Пояснение</span></div>
+            <textarea id="nExpBox" class="hidden" rows="3"></textarea>
+            <button class="submit-btn" onclick="addNote()">Сохранить</button>
+        </div>
+    </div>
+
+    <div id="taskModal" class="modal">
+        <div class="modal-content">
+            <h3 style="margin-bottom:20px">Новое задание</h3>
+            <input type="text" id="tNum" placeholder="Номер">
+            <textarea id="tText" rows="3" placeholder="Условие"></textarea>
+            <textarea id="tSol" rows="5" placeholder="Решение"></textarea>
+            <div class="switch-group"><label class="switch"><input type="checkbox" onchange="toggleField('tExpBox')"><span class="slider"></span></label><span>Разбор</span></div>
+            <textarea id="tExpBox" class="hidden" rows="3"></textarea>
+            <button class="submit-btn" onclick="addTask()">Добавить</button>
+        </div>
+    </div>
+
+    <script>
+        let currentFilter = 'all';
+
+        function openM(id) { document.getElementById(id).style.display = 'flex'; }
+        function closeM() { 
+            document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
+            document.querySelectorAll('input, textarea').forEach(el => { el.value = ''; if(el.type === 'checkbox') el.checked = false; });
+            document.querySelectorAll('#nExpBox, #tExpBox').forEach(el => el.classList.add('hidden'));
+        }
+        window.onclick = e => { if(e.target.className === 'modal') closeM(); };
+        function toggleField(id) { document.getElementById(id).classList.toggle('hidden'); }
+
+        function codeHighlight(code) {
+            const kw = /\b(def|return|if|else|elif|for|while|import|from|print|in|and|or|not|with|as|lambda)\b/g;
+            const fn = /\b(\w+)(?=\()/g;
+            const st = /(['"])(?:(?!\1|\\).|\\.)*\1/g;
+            const nm = /\b\d+\b/g;
+            return code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+                .replace(st, m => `<span class="str">${m}</span>`).replace(kw, m => `<span class="kw">${m}</span>`)
+                .replace(nm, m => `<span class="num">${m}</span>`).replace(fn, m => `<span class="fn">${m}</span>`)
+                .replace(/==(.*?)==/g, '<span class="marked">$1</span>');
+        }
+
+        function createCard(type, num, text, code, exp) {
+            const card = document.createElement('div');
+            card.className = `note-card data-type-${type}`;
+            card.innerHTML = `
+                <button class="delete-btn" onclick="deleteCard(this)">×</button>
+                <div class="note-header"><span>ЗАДАНИЕ №${num}</span><span class="type-tag">${type === 'note' ? 'Заметка' : 'Задание'}</span></div>
+                ${text ? `<div class="task-text">${text}</div>` : ''}
+                <div class="code-block ${type === 'task' ? 'hidden' : ''}">${codeHighlight(code)}</div>
+                <div class="card-footer" style="display:flex; gap:10px">
+                    ${type === 'task' ? `<button class="btn-small" onclick="revealSol(this)">Показать решение</button>` : ''}
+                    <button class="btn-small ${type === 'task' ? 'hidden' : ''}" id="copyBtn" onclick="copyC(this)">Копировать</button>
+                    ${exp ? `<button class="btn-small ${type === 'task' ? 'hidden' : ''}" id="infoBtn" onclick="toggleE(this)">#</button>` : ''}
+                </div>
+                <div class="explanation-box">${exp}</div>
+            `;
+            document.getElementById('cards-container').prepend(card);
+            updateStatusMsgs();
+        }
+
+        async function deleteCard(btn) {
+            const card = btn.closest('.note-card');
+            
+            // Фиксируем текущую высоту для плавного схлопывания в будущем
+            card.style.maxHeight = card.offsetHeight + 'px';
+            
+            // 1. Плавно в Alpha 0%
+            card.classList.add('fade-out');
+            
+            // Ждем завершения прозрачности (800мс как в CSS)
+            await new Promise(r => setTimeout(r, 400));
+            
+            // 2. Плавно схлопываем пространство
+            card.classList.add('collapse');
+            
+            // Ждем завершения схлопывания и удаляем из DOM
+            await new Promise(r => setTimeout(r, 600));
+            
+            card.remove();
+            updateStatusMsgs();
+        }
+
+        function updateStatusMsgs() {
+            const cards = document.querySelectorAll('.note-card:not(.fade-out)');
+            const emptyMsg = document.getElementById('empty-msg');
+            const endMsg = document.getElementById('end-msg');
+            
+            let visibleCount = 0;
+            cards.forEach(card => {
+                const isVisible = (currentFilter === 'all') || card.classList.contains(`data-type-${currentFilter}`);
+                if (isVisible) { card.classList.remove('hidden-filter'); visibleCount++; }
+                else { card.classList.add('hidden-filter'); }
+            });
+
+            if (visibleCount === 0) {
+                emptyMsg.classList.add('visible');
+                endMsg.classList.remove('visible');
+            } else {
+                emptyMsg.classList.remove('visible');
+                endMsg.classList.add('visible');
+            }
+        }
+
+        function addNote() {
+            createCard('note', document.getElementById('nNum').value || '?', null, document.getElementById('nCode').value, document.getElementById('nExpBox').value);
+            closeM();
+        }
+
+        function addTask() {
+            createCard('task', document.getElementById('tNum').value || '?', document.getElementById('tText').value, document.getElementById('tSol').value, document.getElementById('tExpBox').value);
+            closeM();
+        }
+
+        function revealSol(btn) {
+            const card = btn.closest('.note-card');
+            card.querySelector('.code-block').classList.remove('hidden');
+            card.querySelector('#copyBtn')?.classList.remove('hidden');
+            card.querySelector('#infoBtn')?.classList.remove('hidden');
+            btn.style.display = 'none';
+            card.querySelectorAll('.marked').forEach(m => m.classList.add('visible'));
+        }
+
+        function toggleE(btn) {
+            const box = btn.closest('.note-card').querySelector('.explanation-box');
+            box.style.display = box.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function copyC(btn) {
+            navigator.clipboard.writeText(btn.closest('.note-card').querySelector('.code-block').innerText);
+            const old = btn.innerText; btn.innerText = 'OK'; setTimeout(() => btn.innerText = old, 1000);
+        }
+
+        function setFilter(btn, type) {
+            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentFilter = type;
+            updateStatusMsgs();
+        }
+    </script>
+</body>
+</html>
